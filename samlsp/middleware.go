@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/crewjam/saml"
+	"github.com/canthefason/saml"
 	"github.com/dgrijalva/jwt-go"
 )
 
@@ -71,14 +71,14 @@ func randomBytes(n int) []byte {
 // on the URIs specified by m.ServiceProvider.MetadataURL and
 // m.ServiceProvider.AcsURL.
 func (m *Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path == m.ServiceProvider.MetadataURL.Path {
+	if strings.HasSuffix(r.URL.Path, m.ServiceProvider.MetadataURL.Path) {
 		buf, _ := xml.MarshalIndent(m.ServiceProvider.Metadata(), "", "  ")
 		w.Header().Set("Content-Type", "application/samlmetadata+xml")
 		w.Write(buf)
 		return
 	}
 
-	if r.URL.Path == m.ServiceProvider.AcsURL.Path {
+	if strings.HasSuffix(r.URL.Path, m.ServiceProvider.AcsURL.Path) {
 		r.ParseForm()
 		assertion, err := m.ServiceProvider.ParseResponse(r, m.getPossibleRequestIDs(r))
 		if err != nil {
@@ -243,7 +243,7 @@ func (m *Middleware) Authorize(w http.ResponseWriter, r *http.Request, assertion
 
 		// delete the cookie
 		stateCookie.Value = ""
-		stateCookie.Expires = time.Unix(1,0) // past time as close to epoch as possible, but not zero time.Time{}
+		stateCookie.Expires = time.Unix(1, 0) // past time as close to epoch as possible, but not zero time.Time{}
 		http.SetCookie(w, stateCookie)
 	}
 
