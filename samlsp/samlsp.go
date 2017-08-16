@@ -27,6 +27,7 @@ type Options struct {
 	IDPMetadata       *saml.EntityDescriptor
 	IDPMetadataURL    *url.URL
 	HTTPClient        *http.Client
+	RetryCount        int
 }
 
 // New creates a new Middleware
@@ -39,6 +40,10 @@ func New(opts Options) (*Middleware, error) {
 	logr := opts.Logger
 	if logr == nil {
 		logr = logger.DefaultLogger
+	}
+
+	if opts.RetryCount == 0 {
+		opts.RetryCount = 10
 	}
 
 	m := &Middleware{
@@ -54,6 +59,7 @@ func New(opts Options) (*Middleware, error) {
 		AllowIDPInitiated: opts.AllowIDPInitiated,
 		CookieName:        defaultCookieName,
 		CookieMaxAge:      defaultCookieMaxAge,
+		RetryCount:        opts.RetryCount,
 	}
 
 	// fetch the IDP metadata if needed.
@@ -66,6 +72,38 @@ func New(opts Options) (*Middleware, error) {
 	}
 
 	return m, nil
+}
+
+// AddIDPMetadata adds metadata information do the IDPMetadatas map and uses the EntityID as the key value.
+func (m *Middleware) AddIDPMetadata(metadata []byte) error {
+	entity := &saml.EntityDescriptor{}
+	err := xml.Unmarshal(metadata, entity)
+
+	// this comparison is ugly, but it is how the error is generated in encoding/xml
+	if err != nil && err.Error() == "expected element type <EntityDescriptor> but have <EntitiesDescriptor>" {
+		entities := &saml.EntitiesDescriptor{}
+		if err := xml.Unmarshal(metadata, entities); err != nil {
+			return err
+		}
+
+		err = fmt.Errorf("no entity found with IDPSSODescriptor")
+		for _, e := range entities.EntityDescriptors {
+			if len(e.IDPSSODescriptors) > 0 {
+				entity = &e
+				err = nil
+			}
+		}
+	}
+	if err != nil {
+		return err
+	}
+
+	// TODO keeping this only for making it backward compatible
+	m.ServiceProvider.IDPMetadata = entity
+
+	m.ServiceProvider.IDPMetadatas[entity.EntityID] = *entity
+
+	return nil
 }
 
 // FetchIDPMetadata fetches the IdP Metadata from the given url.
@@ -92,7 +130,7 @@ func (m *Middleware) FetchIDPMetadata(c *http.Client, iDPMetadataURL *url.URL) e
 			resp.Body.Close()
 		}
 		if err != nil {
-			if i > 10 {
+			if i > m.RetryCount {
 				return err
 			}
 			m.ServiceProvider.Logger.Printf("ERROR: %s: %s (will retry)", iDPMetadataURL, err)
@@ -100,33 +138,7 @@ func (m *Middleware) FetchIDPMetadata(c *http.Client, iDPMetadataURL *url.URL) e
 			continue
 		}
 
-		entity := &saml.EntityDescriptor{}
-		err = xml.Unmarshal(data, entity)
-
-		// this comparison is ugly, but it is how the error is generated in encoding/xml
-		if err != nil && err.Error() == "expected element type <EntityDescriptor> but have <EntitiesDescriptor>" {
-			entities := &saml.EntitiesDescriptor{}
-			if err := xml.Unmarshal(data, entities); err != nil {
-				return err
-			}
-
-			err = fmt.Errorf("no entity found with IDPSSODescriptor")
-			for _, e := range entities.EntityDescriptors {
-				if len(e.IDPSSODescriptors) > 0 {
-					entity = &e
-					err = nil
-				}
-			}
-		}
-		if err != nil {
-			return err
-		}
-
-		// TODO keeping this only for making it backward compatible
-		m.ServiceProvider.IDPMetadata = entity
-
-		m.ServiceProvider.IDPMetadatas[entity.EntityID] = *entity
-		return nil
+		return m.AddIDPMetadata(data)
 	}
 
 	return errors.New("metadata fetch retry limit is reached")

@@ -52,6 +52,7 @@ type Middleware struct {
 	AllowIDPInitiated bool
 	CookieName        string
 	CookieMaxAge      time.Duration
+	RetryCount        int
 }
 
 const defaultCookieMaxAge = time.Hour
@@ -71,14 +72,14 @@ func randomBytes(n int) []byte {
 // on the URIs specified by m.ServiceProvider.MetadataURL and
 // m.ServiceProvider.AcsURL.
 func (m *Middleware) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if strings.HasSuffix(r.URL.Path, m.ServiceProvider.MetadataURL.Path) {
+	if strings.HasSuffix(m.ServiceProvider.MetadataURL.Path, r.URL.Path) {
 		buf, _ := xml.MarshalIndent(m.ServiceProvider.Metadata(), "", "  ")
 		w.Header().Set("Content-Type", "application/samlmetadata+xml")
 		w.Write(buf)
 		return
 	}
 
-	if strings.HasSuffix(r.URL.Path, m.ServiceProvider.AcsURL.Path) {
+	if strings.HasSuffix(m.ServiceProvider.AcsURL.Path, r.URL.Path) {
 		r.ParseForm()
 		assertion, err := m.ServiceProvider.ParseResponse(r, m.getPossibleRequestIDs(r))
 		if err != nil {
