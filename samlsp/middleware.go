@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/canthefason/saml"
+	"github.com/launchpadcentral/saml"
 	"github.com/dgrijalva/jwt-go"
 )
 
