@@ -27,6 +27,8 @@ type Options struct {
 	IDPMetadata       *saml.EntityDescriptor
 	IDPMetadataURL    *url.URL
 	HTTPClient        *http.Client
+	CookieMaxAge      time.Duration
+	ForceAuthn        bool
 	RetryCount        int
 }
 
@@ -45,6 +47,10 @@ func New(opts Options) (*Middleware, error) {
 	if opts.RetryCount == 0 {
 		opts.RetryCount = 10
 	}
+	cookieMaxAge := opts.CookieMaxAge
+	if opts.CookieMaxAge == 0 {
+		cookieMaxAge = defaultCookieMaxAge
+	}
 
 	m := &Middleware{
 		ServiceProvider: saml.ServiceProvider{
@@ -54,11 +60,13 @@ func New(opts Options) (*Middleware, error) {
 			MetadataURL:  metadataURL,
 			AcsURL:       acsURL,
 			IDPMetadata:  opts.IDPMetadata,
+			ForceAuthn:   &opts.ForceAuthn,
 			IDPMetadatas: map[string]saml.EntityDescriptor{},
 		},
 		AllowIDPInitiated: opts.AllowIDPInitiated,
 		CookieName:        defaultCookieName,
-		CookieMaxAge:      defaultCookieMaxAge,
+		CookieMaxAge:      cookieMaxAge,
+		CookieDomain:      opts.URL.Host,
 		RetryCount:        opts.RetryCount,
 	}
 
